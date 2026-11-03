@@ -1,0 +1,14 @@
+[Unit]
+Description=Local demo launcher bridge
+After=network-online.target
+
+[Service]
+ExecStart=/usr/bin/python3 /opt/demo/api.py
+Restart=on-failure
+RestartSec=2
+UMask=0077
+StandardOutput=journal+console
+StandardError=journal+console
+
+[Install]
+WantedBy=multi-user.target

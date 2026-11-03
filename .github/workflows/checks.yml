@@ -1,0 +1,24 @@
+name: Image source checks
+on:
+  push:
+    branches: [main]
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  check:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check shell, Python, and guest behavior
+        run: |
+          shellcheck guest/*.sh
+          python3 -m unittest discover -s tests -v
+          python3 -m py_compile scripts/*.py guest/*.py
+      - name: Validate chart configuration
+        run: |
+          source versions.env
+          helm repo add gadget https://inspektor-gadget.github.io/charts
+          helm repo add headlamp https://kubernetes-sigs.github.io/headlamp/
+          helm template gadget gadget/gadget --version "${IG_VERSION#v}" -n gadget -f guest/gadget-values.yaml
+          helm template headlamp headlamp/headlamp --version "$HEADLAMP_CHART_VERSION" -n demo -f guest/headlamp-values.yaml

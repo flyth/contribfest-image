@@ -1,0 +1,54 @@
+name: Demo images
+on:
+  workflow_dispatch:
+  push:
+    tags: ["v*"]
+  pull_request:
+    paths:
+      - guest/**
+      - scripts/**
+      - versions.env
+      - .github/workflows/images.yml
+permissions:
+  contents: read
+jobs:
+  image:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            runner: ubuntu-24.04
+          - arch: arm64
+            runner: ubuntu-24.04-arm
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install image builder
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends qemu-system-x86 qemu-system-arm qemu-utils qemu-efi-aarch64 cloud-image-utils
+          if [ -e /dev/kvm ]; then sudo chmod a+rw /dev/kvm; fi
+      - name: Bake, smoke-test, cold-boot-test
+        run: python3 scripts/build-image.py --arch "${{ matrix.arch }}"
+      - name: Preserve build logs
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: image-logs-${{ matrix.arch }}
+          path: build/${{ matrix.arch }}/*.log
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ig-demo-${{ matrix.arch }}
+          path: dist/*
+          compression-level: 0
+      - name: Publish image assets
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release view "$GITHUB_REF_NAME" || gh release create "$GITHUB_REF_NAME" --draft --title "$GITHUB_REF_NAME" || gh release view "$GITHUB_REF_NAME"
+          gh release upload "$GITHUB_REF_NAME" dist/* --clobber
+    permissions:
+      contents: write

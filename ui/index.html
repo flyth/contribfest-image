@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Inspektor Gadget Demo</title>
+  <link rel="stylesheet" href="style.css">
+  <script defer src="app.js"></script>
+</head>
+<body>
+  <main>
+    <header><span class="badge">LOCAL DEMO LAB</span><h1>Inspektor Gadget</h1>
+      <p>Your own Kubernetes playground. No cloud. No setup inside the VM.</p></header>
+    <section aria-label="Demo machine">
+      <div class="row"><h2>Demo machine</h2><span id="arch" class="badge"></span></div>
+      <label for="image">Prebuilt demo image</label>
+      <div class="row"><input id="image" placeholder="Choose ig-demo-ARCH.qcow2" readonly><button id="browse">Choose image</button></div>
+      <p class="hint">2 CPUs · 4 GiB guest RAM · saved changes stay on this computer</p>
+      <div class="row"><button id="start" class="primary">Start demo</button><button id="stop" disabled>Stop safely</button><span id="status" role="status" aria-live="polite">Stopped</span></div>
+    </section>
+    <section aria-label="Connect">
+      <h2>Explore the cluster</h2>
+      <div class="row"><button id="headlamp" disabled>Open Headlamp ↗</button><button id="access" disabled>Get access credentials</button></div>
+      <p class="hint">Headlamp asks for a token. Copy it below; valid for 24 hours.</p>
+      <label for="token">Headlamp login token</label>
+      <div class="row"><input id="token" readonly type="password"><button id="copy" disabled>Copy</button></div>
+      <p id="kubeconfig" class="hint">Export a kubeconfig for IG Desktop using “Get access credentials”.</p>
+      <p class="hint">Push gadgets to <code>127.0.0.1:15000</code><br>Run them as <code>registry.demo.svc.cluster.local:5000/…</code></p>
+    </section>
+    <p id="error" role="alert"></p>
+    <footer><span id="data"></span><button id="reset">Reset demo data…</button></footer>
+    <p class="hint">Requires QEMU and hardware virtualization. Local demo only: admin access, unsigned gadgets, unauthenticated HTTP registry. Keep the image and firmware together.</p>
+  </main>
+</body>
+</html>
