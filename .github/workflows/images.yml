@@ -34,11 +34,11 @@ jobs:
         run: python3 scripts/build-image.py --arch "${{ matrix.arch }}"
       - name: Preserve build logs
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: image-logs-${{ matrix.arch }}
           path: build/${{ matrix.arch }}/*.log
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: ig-demo-${{ matrix.arch }}
           path: dist/*
