@@ -1,0 +1,17 @@
+[Unit]
+Description=Mount and migrate persistent demo registry
+After=local-fs.target
+Before=containerd.service kubelet.service demo.service
+FailureAction=poweroff
+
+[Service]
+Type=oneshot
+ExecStart=/opt/demo/registry-storage.sh
+ExecStop=/usr/bin/umount /var/lib/demo-registry
+RemainAfterExit=yes
+TimeoutStartSec=0
+StandardOutput=journal+console
+StandardError=journal+console
+
+[Install]
+WantedBy=multi-user.target

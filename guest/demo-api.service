@@ -1,8 +1,12 @@
 [Unit]
 Description=Local demo launcher bridge
+Wants=network-online.target
 After=network-online.target
+# Only the launcher passes the SMBIOS token record the bridge needs.
+ConditionPathExists=/sys/firmware/dmi/entries/11-0/raw
 
 [Service]
+Environment=PATH=/opt/bin:/usr/sbin:/usr/bin
 ExecStart=/usr/bin/python3 /opt/demo/api.py
 Restart=on-failure
 RestartSec=2

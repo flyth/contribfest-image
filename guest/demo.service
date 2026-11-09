@@ -1,14 +1,16 @@
 [Unit]
 Description=IG demo cluster
+Requires=demo-registry.service
 Wants=network-online.target containerd.service
-After=network-online.target containerd.service
+After=network-online.target containerd.service demo-registry.service
 
 [Service]
 Type=oneshot
 Environment=HOME=/root
+Environment=PATH=/opt/bin:/usr/sbin:/usr/bin
 ExecStart=/opt/demo/start.sh
 RemainAfterExit=yes
-TimeoutStartSec=900
+TimeoutStartSec=1800
 StandardOutput=journal+console
 StandardError=journal+console
 

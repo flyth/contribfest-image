@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Refresh pinned guest releases. Review the diff, then run both image builds."""
+"""Refresh guest tool pins; update the Ubuntu snapshot explicitly, then build both images."""
 import json
 from pathlib import Path
 import re
@@ -9,7 +9,8 @@ ROOT = Path(__file__).resolve().parents[1]
 
 
 def get(url):
-    with urllib.request.urlopen(url, timeout=60) as response:
+    req = urllib.request.Request(url, headers={"User-Agent": "ig-demo-version-updater"})
+    with urllib.request.urlopen(req, timeout=60) as response:
         return response.read().decode()
 
 
@@ -17,24 +18,35 @@ def latest(repo):
     return json.loads(get(f"https://api.github.com/repos/{repo}/releases/latest"))["tag_name"]
 
 
+def chart_version(index, name):
+    """Return the newest stable release of a chart from a Helm repository index."""
+    entry = re.search(rf"^  {re.escape(name)}:\n(.*?)(?=^  [\w-]+:\n|\Z)", index, re.MULTILINE | re.DOTALL)
+    stable = entry and re.search(r"^    version: ([0-9.]+)$", entry[1], re.MULTILINE)
+    if not stable:
+        raise ValueError(f"No stable release of chart {name}")
+    return stable[1]
+
+
 def main():
-    minikube = latest("kubernetes/minikube")
-    constants = get(f"https://raw.githubusercontent.com/kubernetes/minikube/{minikube}/pkg/minikube/constants/constants.go")
-    kubernetes = re.search(r'DefaultKubernetesVersion\s*=\s*"([^"]+)"', constants)[1]
+    kubernetes = get("https://dl.k8s.io/release/stable.txt").strip()
     # Keep CRI tools aligned with the Kubernetes minor, not an unrelated latest.
     cri_releases = json.loads(get("https://api.github.com/repos/kubernetes-sigs/cri-tools/releases?per_page=100"))
     minor = ".".join(kubernetes.split(".")[:2]) + "."
     cri = next(r["tag_name"] for r in cri_releases
                if r["tag_name"].startswith(minor) and not r["prerelease"] and not r["draft"])
     chart_index = get("https://kubernetes-sigs.github.io/headlamp/index.yaml")
-    headlamp = re.search(r"^    version: ([0-9.]+)$", chart_index, re.MULTILINE)[1]
+    headlamp = chart_version(chart_index, "headlamp")
+    prometheus = chart_version(get("https://prometheus-community.github.io/helm-charts/index.yaml"), "prometheus")
+    grafana = chart_version(get("https://grafana-community.github.io/helm-charts/index.yaml"), "grafana")
     values = {
-        "MINIKUBE_VERSION": minikube,
+        "CNI_PLUGINS_VERSION": latest("containernetworking/plugins"),
         "KUBERNETES_VERSION": kubernetes,
         "CRICTL_VERSION": cri,
         "HELM_VERSION": latest("helm/helm"),
         "IG_VERSION": latest("inspektor-gadget/inspektor-gadget"),
         "HEADLAMP_CHART_VERSION": headlamp,
+        "PROMETHEUS_CHART_VERSION": prometheus,
+        "GRAFANA_CHART_VERSION": grafana,
         "REGISTRY_VERSION": latest("distribution/distribution").removeprefix("v"),
         "ORAS_VERSION": latest("oras-project/oras"),
     }

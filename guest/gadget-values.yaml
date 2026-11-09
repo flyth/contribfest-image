@@ -6,6 +6,9 @@ config:
       verify-image: false
       insecure-registries:
         - registry.demo.svc.cluster.local:5000
+    otel-metrics:
+      otel-metrics-listen: true
+      otel-metrics-export-internals: true
 resources:
   requests:
     cpu: 50m

@@ -12,7 +12,7 @@ jobs:
       - uses: actions/checkout@v7
       - name: Check shell, Python, and guest behavior
         run: |
-          shellcheck guest/*.sh
+          shellcheck guest/*.sh scripts/*.sh
           python3 -m unittest discover -s tests -v
           python3 -m py_compile scripts/*.py guest/*.py
       - name: Validate chart configuration
@@ -20,5 +20,9 @@ jobs:
           source versions.env
           helm repo add gadget https://inspektor-gadget.github.io/charts
           helm repo add headlamp https://kubernetes-sigs.github.io/headlamp/
+          helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
+          helm repo add grafana-community https://grafana-community.github.io/helm-charts
           helm template gadget gadget/gadget --version "${IG_VERSION#v}" -n gadget -f guest/gadget-values.yaml
           helm template headlamp headlamp/headlamp --version "$HEADLAMP_CHART_VERSION" -n demo -f guest/headlamp-values.yaml
+          helm template prometheus prometheus-community/prometheus --version "$PROMETHEUS_CHART_VERSION" -n demo -f guest/prometheus-values.yaml
+          helm template grafana grafana-community/grafana --version "$GRAFANA_CHART_VERSION" -n demo -f guest/grafana-values.yaml --set-file dashboards.default.ig-demo.json=guest/grafana-dashboard.json

@@ -37,13 +37,73 @@ jobs:
         if: runner.os == 'Linux'
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf
+          sudo apt-get install -y --no-install-recommends libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf qemu-utils
+      - name: macOS QEMU runtime cache
+        if: runner.os == 'macOS'
+        uses: actions/cache@v4
+        with:
+          path: src-tauri/qemu
+          key: qemu-runtime-${{ matrix.runner }}-${{ hashFiles('scripts/qemu.env', 'scripts/build-qemu-macos.sh') }}
+      - name: macOS bundled QEMU runtime
+        if: runner.os == 'macOS'
+        run: |
+          brew install ninja pkg-config glib pixman libslirp dtc
+          scripts/build-qemu-macos.sh --if-missing
+      - name: macOS registry test tools
+        if: runner.os == 'macOS'
+        run: brew install qemu
+      - name: Windows QEMU build tools
+        if: runner.os == 'Windows'
+        uses: msys2/setup-msys2@v2
+        with:
+          msystem: UCRT64
+          update: true
+          install: >-
+            diffutils
+            mingw-w64-ucrt-x86_64-gcc
+            mingw-w64-ucrt-x86_64-glib2
+            mingw-w64-ucrt-x86_64-pixman
+            mingw-w64-ucrt-x86_64-libslirp
+            mingw-w64-ucrt-x86_64-dtc
+            mingw-w64-ucrt-x86_64-ninja
+            mingw-w64-ucrt-x86_64-pkgconf
+            mingw-w64-ucrt-x86_64-python
+      - name: Windows QEMU runtime cache
+        if: runner.os == 'Windows'
+        uses: actions/cache@v4
+        with:
+          path: src-tauri/qemu
+          key: qemu-runtime-${{ matrix.runner }}-${{ hashFiles('scripts/qemu.env', 'scripts/build-qemu-windows.sh') }}
+      - name: Windows bundled QEMU runtime
+        if: runner.os == 'Windows'
+        shell: msys2 {0}
+        run: scripts/build-qemu-windows.sh --if-missing
+      - name: Windows registry test tools
+        if: runner.os == 'Windows'
+        run: choco install qemu --no-progress -y
       - run: npm ci
       - run: npm run check
       - run: cargo fmt --manifest-path src-tauri/Cargo.toml --check
       - run: cargo clippy --locked --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
       - run: cargo test --locked --manifest-path src-tauri/Cargo.toml
       - run: npm run build
+      - name: macOS bundle contains QEMU
+        if: runner.os == 'macOS'
+        run: |
+          runtime="src-tauri/target/release/bundle/macos/IG Demo.app/Contents/Resources/qemu"
+          env -i "$runtime/bin/qemu-img" --version
+          for file in "$runtime"/bin/* "$runtime"/lib/*.dylib; do codesign --verify --strict "$file"; done
+          codesign -d --entitlements - "$runtime"/bin/qemu-system-* 2>/dev/null | grep -q com.apple.security.hypervisor
+      - name: Windows bundle contains QEMU
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          # Run with only Windows on PATH, as an installed app would.
+          $env:PATH = "$env:SystemRoot\System32"
+          & src-tauri/target/release/qemu/bin/qemu-img.exe --version
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+          $accel = & src-tauri/target/release/qemu/bin/qemu-system-x86_64.exe -accel help
+          if (-not ($accel -contains 'whpx')) { throw "bundled QEMU lacks WHPX" }
       - uses: actions/upload-artifact@v7
         with:
           name: ig-demo-launcher-${{ matrix.target }}

@@ -2,7 +2,7 @@ name: Demo images
 on:
   workflow_dispatch:
   push:
-    tags: ["v*"]
+    tags: ["images-v*"]
   pull_request:
     paths:
       - guest/**
@@ -22,33 +22,38 @@ jobs:
           - arch: arm64
             runner: ubuntu-24.04-arm
     runs-on: ${{ matrix.runner }}
-    timeout-minutes: 90
+    timeout-minutes: 180
     steps:
       - uses: actions/checkout@v7
       - name: Install image builder
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends qemu-system-x86 qemu-system-arm qemu-utils qemu-efi-aarch64 cloud-image-utils
+          sudo apt-get install -y --no-install-recommends qemu-system-x86 qemu-system-arm qemu-utils qemu-efi-aarch64 cloud-image-utils e2fsprogs
           if [ -e /dev/kvm ]; then sudo chmod a+rw /dev/kvm; fi
-      - name: Bake, smoke-test, cold-boot-test
-        run: python3 scripts/build-image.py --arch "${{ matrix.arch }}"
+      - name: Bake, smoke-test, verify registry persistence and OS reset
+        run: python3 scripts/build-image.py --arch "${{ matrix.arch }}" --release "$GITHUB_REF_NAME"
       - name: Preserve build logs
         if: always()
         uses: actions/upload-artifact@v7
         with:
           name: image-logs-${{ matrix.arch }}
-          path: build/${{ matrix.arch }}/*.log
+          path: build/ubuntu-registry-${{ matrix.arch }}/*.log
       - uses: actions/upload-artifact@v7
         with:
           name: ig-demo-${{ matrix.arch }}
-          path: dist/*
+          path: dist/ubuntu-registry/*
           compression-level: 0
       - name: Publish image assets
         if: startsWith(github.ref, 'refs/tags/')
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release view "$GITHUB_REF_NAME" || gh release create "$GITHUB_REF_NAME" --draft --title "$GITHUB_REF_NAME" || gh release view "$GITHUB_REF_NAME"
-          gh release upload "$GITHUB_REF_NAME" dist/* --clobber
+          # Public, so the launcher can download without credentials; never "latest",
+          # which stays with launcher releases.
+          gh release view "$GITHUB_REF_NAME" || gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" \
+            --notes "Demo VM images" --latest=false || gh release view "$GITHUB_REF_NAME"
+          find dist/ubuntu-registry -type f ! -name 'manifest-*' -print0 | xargs -0 gh release upload "$GITHUB_REF_NAME" --clobber
+          # The launcher only considers an architecture once its manifest exists.
+          gh release upload "$GITHUB_REF_NAME" "dist/ubuntu-registry/manifest-${{ matrix.arch }}.json" --clobber
     permissions:
       contents: write

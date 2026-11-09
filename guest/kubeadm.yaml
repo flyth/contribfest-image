@@ -1,0 +1,43 @@
+apiVersion: kubeadm.k8s.io/v1beta4
+kind: InitConfiguration
+localAPIEndpoint:
+  advertiseAddress: 10.0.2.15
+  bindPort: 8443
+nodeRegistration:
+  name: demo
+  criSocket: unix:///run/containerd/containerd.sock
+  kubeletExtraArgs:
+    - name: node-ip
+      value: 10.0.2.15
+timeouts:
+  controlPlaneComponentHealthCheck: 15m0s
+  kubeletHealthCheck: 5m0s
+---
+apiVersion: kubeadm.k8s.io/v1beta4
+kind: ClusterConfiguration
+kubernetesVersion: ${KUBERNETES_VERSION}
+networking:
+  podSubnet: 10.244.0.0/24
+apiServer:
+  certSANs:
+    - localhost
+    - 127.0.0.1
+    - 10.0.2.15
+controllerManager:
+  extraArgs:
+    - name: flex-volume-plugin-dir
+      value: /opt/libexec/kubernetes/kubelet-plugins/volume/exec
+---
+apiVersion: kubelet.config.k8s.io/v1beta1
+kind: KubeletConfiguration
+cgroupDriver: systemd
+resolvConf: /run/systemd/resolve/resolv.conf
+volumePluginDir: /opt/libexec/kubernetes/kubelet-plugins/volume/exec
+shutdownGracePeriod: 30s
+shutdownGracePeriodCriticalPods: 10s
+---
+apiVersion: kubeproxy.config.k8s.io/v1alpha1
+kind: KubeProxyConfiguration
+mode: iptables
+iptables:
+  localhostNodePorts: true

@@ -1,14 +1,26 @@
 #!/usr/bin/env bash
 set -euo pipefail
+export PATH=/opt/bin:/usr/sbin:/usr/bin
 # shellcheck source=versions.env
 source /opt/demo/versions.env
 export HOME=/root KUBECONFIG=/etc/kubernetes/admin.conf
 test -s /sys/kernel/btf/vmlinux
-kubectl -n gadget rollout status daemonset/gadget --timeout=180s
-kubectl -n demo rollout status deployment/headlamp --timeout=180s
-kubectl -n demo rollout status deployment/registry --timeout=180s
+python3 - <<'PY'
+import runpy
+import time
+
+status = runpy.run_path('/opt/demo/api.py')['status']
+deadline = time.monotonic() + 300
+while time.monotonic() < deadline:
+    state = status()
+    if state['ready']:
+        break
+    print(state['message'], flush=True)
+    time.sleep(2)
+else:
+    raise TimeoutError('Guest services did not become ready before the smoke check')
+PY
 curl -fsS http://127.0.0.1:30500/v2/
-curl -fsS http://127.0.0.1:30080/ > /dev/null
 # Copying through the external-facing NodePort exercises the registry write path.
 oras cp "ghcr.io/inspektor-gadget/gadget/trace_open:$IG_VERSION" \
   127.0.0.1:30500/demo/trace_open:demo --to-plain-http
@@ -20,7 +32,7 @@ kubectl-gadget run -n demo registry.demo.svc.cluster.local:5000/demo/trace_open:
 gadget=$!
 for _ in {1..8}; do
   sleep 2
-  kubectl -n demo exec deployment/headlamp -- cat /etc/hostname > /dev/null
+  kubectl -n demo exec deployment/registry -- cat /etc/hostname > /dev/null
 done
 wait "$gadget"
 cat "$events"

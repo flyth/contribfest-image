@@ -46,7 +46,7 @@ spec:
         - name: data
           hostPath:
             path: /var/lib/demo-registry
-            type: DirectoryOrCreate
+            type: Directory
 ---
 apiVersion: v1
 kind: Service

@@ -10,9 +10,9 @@
     "withGlobalTauri": true,
     "windows": [{
       "title": "Inspektor Gadget Demo",
-      "width": 760,
-      "height": 720,
-      "minWidth": 600,
+      "width": 1180,
+      "height": 780,
+      "minWidth": 800,
       "minHeight": 620
     }],
     "security": {

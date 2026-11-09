@@ -1,0 +1,15 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "build": {
+    "beforeDevCommand": {
+      "script": "scripts/build-qemu-macos.sh --if-missing",
+      "wait": true
+    },
+    "beforeBuildCommand": "scripts/build-qemu-macos.sh --if-missing"
+  },
+  "bundle": {
+    "resources": {
+      "qemu/": "qemu/"
+    }
+  }
+}

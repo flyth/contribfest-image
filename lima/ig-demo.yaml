@@ -1,0 +1,33 @@
+# Lima template for the IG demo cluster. `ig-demo start` fills in the image and
+# runs `limactl start` with it; you can also read and use it by hand.
+#
+# The image is the launcher's `ig-minimal-<arch>.qcow2`: Ubuntu, a single-node
+# Kubernetes cluster, Inspektor Gadget and a local registry, all pre-installed,
+# so starting needs no downloads besides the image itself.
+minimumLimaVersion: 2.0.0
+
+images:
+  - location: "@IMAGE@"
+    arch: "@ARCH@"
+    digest: "sha256:@SHA256@"
+
+cpus: 2
+memory: 4GiB
+disk: 20GiB
+
+# Nothing from your computer is shared with the VM.
+mounts: []
+
+# The image runs its own containerd for Kubernetes; Lima's is not needed.
+containerd:
+  system: false
+  user: false
+
+portForwards:
+  # Kubernetes API, used by kubectl and kubectl-gadget on your computer.
+  - guestPort: 8443
+    hostIP: 127.0.0.1
+    hostPort: 18443
+  # Forward nothing else.
+  - guestPortRange: [1, 65535]
+    ignore: true

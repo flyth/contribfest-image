@@ -1,0 +1,16 @@
+[Unit]
+Description=Provision an optional image layer when the image builder asks for one
+Requires=demo.service
+After=demo.service demo-api.service
+
+[Service]
+Type=oneshot
+Environment=HOME=/root
+Environment=PATH=/opt/bin:/usr/sbin:/usr/bin
+ExecStart=/opt/demo/provision-layer.sh
+TimeoutStartSec=0
+StandardOutput=journal+console
+StandardError=journal+console
+
+[Install]
+WantedBy=multi-user.target

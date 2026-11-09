@@ -1,0 +1,15 @@
+[Unit]
+Description=Give the demo cluster its node address
+Wants=network-online.target
+After=network-online.target
+Before=containerd.service kubelet.service demo.service
+
+[Service]
+Type=oneshot
+ExecStart=/opt/demo/demo-network.sh
+RemainAfterExit=yes
+StandardOutput=journal+console
+StandardError=journal+console
+
+[Install]
+WantedBy=multi-user.target

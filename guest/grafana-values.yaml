@@ -1,0 +1,51 @@
+fullnameOverride: grafana
+# Its image takes many minutes to pull and unpack under software emulation.
+progressDeadlineSeconds: 3600
+service:
+  type: NodePort
+  port: 80
+  nodePort: 30090
+persistence:
+  enabled: false
+testFramework:
+  enabled: false
+resources:
+  requests:
+    cpu: 50m
+    memory: 128Mi
+  limits:
+    memory: 512Mi
+datasources:
+  datasources.yaml:
+    apiVersion: 1
+    datasources:
+      - name: Prometheus
+        uid: prometheus
+        type: prometheus
+        access: proxy
+        url: http://prometheus.demo.svc.cluster.local
+        isDefault: true
+dashboardProviders:
+  dashboardproviders.yaml:
+    apiVersion: 1
+    providers:
+      - name: default
+        type: file
+        options:
+          path: /var/lib/grafana/dashboards/default
+grafana.ini:
+  # Local demo only: QEMU forwards this port to the host's loopback interface.
+  auth.anonymous:
+    enabled: true
+    org_role: Admin
+  auth:
+    disable_login_form: true
+  # The appliance must start and stay quiet without a network.
+  analytics:
+    reporting_enabled: false
+    check_for_updates: false
+    check_for_plugin_updates: false
+  plugins:
+    preinstall_disabled: true
+  dashboards:
+    default_home_dashboard_path: /var/lib/grafana/dashboards/default/ig-demo.json
