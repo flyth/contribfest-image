@@ -36,7 +36,7 @@ Debian/Ubuntu:
 sudo apt-get update
 sudo apt-get install --no-install-recommends \
   python3 git qemu-system-x86 qemu-system-arm qemu-utils qemu-efi-aarch64 \
-  cloud-image-utils e2fsprogs
+  cloud-image-utils e2fsprogs ipxe-qemu
 ```
 
 Other distributions need the same pieces: Python 3.11+, `qemu-system-x86_64`
@@ -131,7 +131,13 @@ lima/ig-demo start --image /path/to/ig-minimal-arm64.qcow2
 eval "$(lima/ig-demo env)"
 kubectl get nodes                                   # one node "demo", Ready
 kubectl -n gadget get pods                          # gadget pod Running
+
+# trace_open only reports containers, so give it one that opens files.
+kubectl run opener --image=busybox:1.36 --restart=Never -- \
+  sh -c 'while true; do cat /etc/hostname /etc/passwd >/dev/null; sleep 0.3; done'
+kubectl wait --for=condition=Ready pod/opener --timeout=120s
 kubectl gadget run trace_open:v0.57.0 --timeout 5   # prints file-open events
+kubectl delete pod opener --now
 ```
 
 `start` checks the image against `SHA256SUMS-<arch>` beside it, creates the
