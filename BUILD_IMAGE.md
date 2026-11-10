@@ -14,8 +14,9 @@ run produces both variants for one architecture:
 ## 1. Host requirements
 
 - **Linux**, x86_64 for `amd64` images or arm64 for `arm64` images. Building
-  for the other architecture works but uses software emulation and takes many
-  hours. macOS and Windows cannot build; use a Linux VM there (on Apple Silicon,
+  for the other architecture works but uses software emulation (TCG), which is
+  slower: see the timings in section 3. macOS and Windows cannot build; use a
+  Linux VM there (on Apple Silicon,
   a Lima VM with `nestedVirtualization: true` gives it KVM on M3 or newer).
 - **KVM** (`/dev/kvm` readable and writable by your user) strongly recommended.
   Without it the builder falls back to TCG, which is several times slower.
@@ -64,7 +65,15 @@ Options:
 - `--resume` — skip provisioning and only re-run the tests and packaging on an
   already provisioned disk. It refuses if guest files or `versions.env` changed.
 
-Expect roughly an hour on a native host with KVM and a good connection.
+Measured on an Apple M4 Mac, in an arm64 Lima VM (6 CPUs, 9 GiB, nested KVM)
+with a fast connection:
+
+| Build | Time |
+|-------|------|
+| `--arch arm64` (KVM) | about 12 minutes |
+| `--arch amd64` (TCG emulation) | about 27 minutes: provisioning 8, layer 8.5, three cold boots 9, packaging 1.5 |
+
+Allow more on a slow connection, where the downloads dominate.
 
 ### What the build does
 
