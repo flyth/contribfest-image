@@ -83,7 +83,11 @@ Allow more on a slow connection, where the downloads dominate.
    into the VM and runs `guest/provision.sh`. That installs containerd,
    Kubernetes, IG and the registry, pre-pulls every image, runs
    `guest/smoke.sh` (BTF present, a gadget pushed through the registry, real
-   file-open events through the IG daemon), cleans up, and powers off. The log
+   file-open events through the IG daemon), cleans up, and powers off. Cleanup
+   removes the build-only tools (`guest/build-tools.sh`: Helm, crictl,
+   kubectl-gadget, ORAS), so only kubeadm, kubelet and kubectl stay in the
+   image. Containerd keeps no compressed image layers, and only the bridge,
+   host-local and loopback CNI plugins are installed. The log
    must end with `DEMO_IMAGE_READY`.
 3. **Layer boot:** boots an overlay of that disk with an SMBIOS flag that runs
    `guest/provision-layer.sh` (Headlamp, Prometheus, Grafana) and

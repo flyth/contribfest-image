@@ -417,6 +417,17 @@ class MonitoringConfigTests(unittest.TestCase):
         self.assertIn("demo-layer.service", base)
         self.assertIn("io.inspektor-gadget.demo.provision", layer)
 
+    def test_build_only_tools_are_removed_before_packaging(self):
+        for name, ready in [("provision.sh", "DEMO_IMAGE_READY"), ("provision-layer.sh", "DEMO_LAYER_READY")]:
+            script = (ROOT / "guest" / name).read_text()
+            install = script.index("/opt/demo/build-tools.sh install")
+            remove = script.index("/opt/demo/build-tools.sh remove")
+            self.assertLess(install, script.index("helm "), name)
+            self.assertLess(remove, script.index(f"echo {ready}"), name)
+            self.assertLess(script.rindex("smoke"), remove, name)
+        self.assertIn("tools=(helm crictl kubectl-gadget oras)",
+                      (ROOT / "guest/build-tools.sh").read_text())
+
     def test_chart_versions_are_pinned(self):
         versions = builder.versions()
         self.assertTrue(versions["PROMETHEUS_CHART_VERSION"])

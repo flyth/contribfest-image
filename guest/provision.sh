@@ -73,33 +73,13 @@ for tool in kubeadm kubelet kubectl; do
   echo "$(cat "/tmp/$tool.sha256")  /opt/bin/$tool" | sha256sum -c -
   chmod +x "/opt/bin/$tool"
 done
-fetch "https://get.helm.sh/helm-$HELM_VERSION-linux-$arch.tar.gz" /tmp/helm.tar.gz
-fetch "https://get.helm.sh/helm-$HELM_VERSION-linux-$arch.tar.gz.sha256sum" /tmp/helm.sha256
-echo "$(awk '{print $1}' /tmp/helm.sha256)  /tmp/helm.tar.gz" | sha256sum -c -
-tar -xzf /tmp/helm.tar.gz -C /opt/bin --strip-components=1 "linux-$arch/helm"
-fetch "https://github.com/kubernetes-sigs/cri-tools/releases/download/$CRICTL_VERSION/crictl-$CRICTL_VERSION-linux-$arch.tar.gz" /tmp/crictl.tar.gz
-fetch "https://github.com/kubernetes-sigs/cri-tools/releases/download/$CRICTL_VERSION/crictl-$CRICTL_VERSION-linux-$arch.tar.gz.sha256" /tmp/crictl.sha256
-echo "$(cat /tmp/crictl.sha256)  /tmp/crictl.tar.gz" | sha256sum -c -
-tar -xzf /tmp/crictl.tar.gz -C /opt/bin crictl
+/opt/demo/build-tools.sh install
 cni_asset="cni-plugins-linux-$arch-$CNI_PLUGINS_VERSION.tgz"
 fetch "https://github.com/containernetworking/plugins/releases/download/$CNI_PLUGINS_VERSION/$cni_asset" /tmp/cni.tgz
 fetch "https://github.com/containernetworking/plugins/releases/download/$CNI_PLUGINS_VERSION/$cni_asset.sha256" /tmp/cni.sha256
 echo "$(awk '{print $1}' /tmp/cni.sha256)  /tmp/cni.tgz" | sha256sum -c -
-tar -xzf /tmp/cni.tgz -C /opt/cni/bin
-fetch "https://github.com/inspektor-gadget/inspektor-gadget/releases/download/$IG_VERSION/kubectl-gadget-linux-$arch-$IG_VERSION.tar.gz" /tmp/gadget.tar.gz
-fetch "https://github.com/inspektor-gadget/inspektor-gadget/releases/download/$IG_VERSION/SHA256SUMS" /tmp/ig.sha256
-expected=$(grep " kubectl-gadget-linux-$arch-$IG_VERSION.tar.gz$" /tmp/ig.sha256 | awk '{print $1}')
-test -n "$expected"
-echo "$expected  /tmp/gadget.tar.gz" | sha256sum -c -
-tar -xzf /tmp/gadget.tar.gz -C /opt/bin kubectl-gadget
-oras_asset="oras_${ORAS_VERSION#v}_linux_$arch.tar.gz"
-fetch "https://github.com/oras-project/oras/releases/download/$ORAS_VERSION/$oras_asset" /tmp/oras.tar.gz
-fetch "https://github.com/oras-project/oras/releases/download/$ORAS_VERSION/oras_${ORAS_VERSION#v}_checksums.txt" /tmp/oras.sha256
-expected=$(grep " $oras_asset$" /tmp/oras.sha256 | awk '{print $1}')
-test -n "$expected"
-echo "$expected  /tmp/oras.tar.gz" | sha256sum -c -
-tar -xzf /tmp/oras.tar.gz -C /opt/bin oras
-chmod +x /opt/bin/{helm,crictl,kubectl-gadget,oras}
+# Only the plugins 10-demo.conflist and the runtime use; the rest is about 80 MB.
+tar -xzf /tmp/cni.tgz -C /opt/cni/bin ./bridge ./host-local ./loopback
 
 sed "s/\${KUBERNETES_VERSION}/$KUBERNETES_VERSION/" /opt/demo/kubeadm.yaml > /etc/kubernetes/kubeadm.yaml
 sandbox=$(kubeadm config images list --config=/etc/kubernetes/kubeadm.yaml | grep '/pause:')
@@ -110,6 +90,9 @@ root = "/var/lib/containerd"
 state = "/run/containerd"
 [plugins."io.containerd.grpc.v1.cri"]
   sandbox_image = "$sandbox"
+# Keep only the unpacked snapshots of pulled images, not their compressed layers.
+[plugins."io.containerd.grpc.v1.cri".containerd]
+  discard_unpacked_layers = true
 [plugins."io.containerd.grpc.v1.cri".cni]
   bin_dir = "/opt/cni/bin"
   conf_dir = "/etc/cni/net.d"
@@ -174,10 +157,13 @@ apt-get purge -y snapd lxd-installer lxd-agent-loader apport apport-core-dump-ha
   pollinate unattended-upgrades
 systemctl disable --now apt-daily.timer apt-daily-upgrade.timer || true
 apt-get clean
+/opt/demo/build-tools.sh remove
 rm -rf /root/.cache/helm /var/lib/apt/lists/*
-rm -f /tmp/{kubeadm,kubelet,kubectl}.sha256 /tmp/helm.tar.gz /tmp/helm.sha256 \
-  /tmp/crictl.tar.gz /tmp/crictl.sha256 /tmp/cni.tgz /tmp/cni.sha256 \
-  /tmp/gadget.tar.gz /tmp/ig.sha256 /tmp/oras.tar.gz /tmp/oras.sha256
+rm -f /tmp/{kubeadm,kubelet,kubectl}.sha256 /tmp/cni.tgz /tmp/cni.sha256
+# A VM loads no hardware firmware; no package owns this copy.
+rm -rf "/usr/lib/firmware/$(uname -r)"
+journalctl --rotate
+journalctl --vacuum-time=1s
 fstrim -av
 # Keep the baked network configuration. cloud-init runs again only when a NoCloud seed
 # (Lima's cidata disk) is attached; ds-identify disables it on the launcher's boots.

@@ -17,6 +17,7 @@ trap failed ERR
 # shellcheck source=versions.env
 source /opt/demo/versions.env
 export HOME=/root KUBECONFIG=/etc/kubernetes/admin.conf
+/opt/demo/build-tools.sh install
 helm repo add headlamp https://kubernetes-sigs.github.io/headlamp/
 helm repo add prometheus-community https://prometheus-community.github.io/helm-charts
 helm repo add grafana-community https://grafana-community.github.io/helm-charts
@@ -31,6 +32,7 @@ helm upgrade --install grafana grafana-community/grafana --namespace demo \
 mkdir -p /opt/demo/layers
 touch /opt/demo/layers/observability
 /opt/demo/smoke-observability.sh
+/opt/demo/build-tools.sh remove
 rm -rf /root/.cache/helm /root/.config/helm
 fstrim -av
 sync
