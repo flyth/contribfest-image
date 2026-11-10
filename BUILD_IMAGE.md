@@ -50,7 +50,7 @@ Optional, for the checks in section 5: `shellcheck`.
 ## 3. Build
 
 ```sh
-git clone -b layered-images-lima https://github.com/flyth/ig-launcher.git ig-demo
+git clone -b layered-images-lima git@github.com:flyth/contribfest-image.git ig-demo
 cd ig-demo
 python3 scripts/build-image.py --arch arm64     # or: --arch amd64
 ```

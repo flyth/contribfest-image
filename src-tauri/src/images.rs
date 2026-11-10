@@ -15,7 +15,7 @@ use std::{
 /// Guest contract this launcher understands; must match `GUEST_API` in scripts/build-image.py.
 pub const GUEST_API: u32 = 1;
 pub const RELEASES_URL: &str =
-    "https://api.github.com/repos/flyth/ig-launcher/releases?per_page=100";
+    "https://api.github.com/repos/flyth/contribfest-image/releases?per_page=100";
 const TAG_PREFIX: &str = "images-v";
 
 #[derive(Deserialize, Serialize, Clone, Debug, PartialEq)]

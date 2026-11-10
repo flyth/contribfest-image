@@ -12,7 +12,7 @@
 set -euo pipefail
 
 NAME="ig-demo"
-REPO=${IG_DEMO_REPO:-flyth/ig-launcher}
+REPO=${IG_DEMO_REPO:-flyth/contribfest-image}
 STATE=${IG_DEMO_HOME:-$HOME/.ig-demo}
 API_PORT=18443
 HERE=$(cd "$(dirname "$0")" && pwd)
