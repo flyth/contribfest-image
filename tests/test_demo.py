@@ -442,7 +442,10 @@ class LimaTests(unittest.TestCase):
         self.assertIn("mounts: []", template)
         self.assertRegex(template, r"containerd:\n  system: false\n  user: false")
         self.assertRegex(template, r"guestPort: 8443\n    hostIP: 127.0.0.1\n    hostPort: 18443")
-        self.assertRegex(template, r"guestPortRange: \[1, 65535\]\n    ignore: true")
+        # Any guest address and both protocols: the default rule lets [::] binds through.
+        self.assertIn(
+            "  - guestIP: 0.0.0.0\n    guestIPMustBeZero: false\n"
+            "    guestPortRange: [1, 65535]\n    proto: any\n    ignore: true\n", template)
 
     def test_script_verifies_every_download(self):
         script = (ROOT / "lima/ig-demo").read_text()
