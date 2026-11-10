@@ -23,7 +23,8 @@ esac
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT
 fetch() {
-  curl --fail --location --retry 5 --output "$2" "$1"
+  # --retry alone skips TLS and connection errors, which do happen mid-build.
+  curl --fail --location --retry 5 --retry-all-errors --output "$2" "$1"
 }
 mkdir -p /opt/bin
 fetch "https://get.helm.sh/helm-$HELM_VERSION-linux-$arch.tar.gz" "$tmp/helm.tar.gz"
