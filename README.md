@@ -26,7 +26,7 @@ without the launcher. Build gadgets from
 publishes them to `ghcr.io`, and the cluster pulls them from there.
 
 ```sh
-brew install lima          # Linux: install QEMU first, then Lima
+brew install lima          # Linux and WSL2: see below
 lima/ig-demo start         # downloads the image once, then about 5 minutes
 eval "$(lima/ig-demo env)" # kubectl, kubectl-gadget and KUBECONFIG for this shell
 kubectl gadget run ghcr.io/<owner>/<repository>:latest
@@ -41,6 +41,21 @@ and installs `kubectl` and `kubectl-gadget` matching the VM into
 `~/.ig-demo/bin`. Nothing needs root, and nothing from your computer is shared
 with the VM. Only the API server is forwarded. The VM keeps its cluster and
 registry across `ig-demo stop` and `start`; `ig-demo delete` removes it.
+
+**Linux and Windows (WSL2)** need QEMU, access to `/dev/kvm`, and Lima. Without
+Homebrew, use Lima's release tarball (no root needed; `~/.local/bin` must be on
+`PATH`). On x86_64:
+
+```sh
+sudo apt install qemu-system-x86 qemu-utils   # arm64: qemu-system-arm
+sudo usermod -aG kvm $USER                    # then log in again; WSL2: wsl --shutdown
+curl -fsSLO https://github.com/lima-vm/lima/releases/download/v2.3.0/lima-2.3.0-Linux-x86_64.tar.gz
+tar -xzf lima-2.3.0-Linux-x86_64.tar.gz -C ~/.local
+```
+
+The new group only applies after a full re-login. To test right away,
+`sudo chmod 666 /dev/kvm` works until the next reboot. WSL2 needs Windows 11 for
+`/dev/kvm`. `ig-demo start` checks all of this before downloading anything.
 
 The same image boots under the launcher and under Lima. Lima attaches a NoCloud
 seed, so cloud-init creates its user and SSH key; without one, cloud-init stays

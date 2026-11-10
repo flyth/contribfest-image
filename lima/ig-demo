@@ -55,8 +55,24 @@ require_lima() {
   if [[ $os == darwin ]]; then
     die "Lima is not installed. Install it with: brew install lima"
   fi
-  die "Lima is not installed. Install QEMU (e.g. sudo apt install qemu-system qemu-utils),
-then Lima: brew install lima, or see https://lima-vm.io/docs/installation/"
+  die "Lima is not installed. Without root, download it from
+https://github.com/lima-vm/lima/releases (lima-<version>-Linux-$lima_arch.tar.gz)
+and unpack it: tar -xzf lima-*.tar.gz -C ~/.local   (needs ~/.local/bin on PATH)"
+}
+
+# Before any download: what Lima on Linux needs from the host.
+check_host() {
+  [[ $os == linux ]] || return 0
+  local tool missing=()
+  for tool in qemu-img "qemu-system-$lima_arch"; do
+    command -v "$tool" >/dev/null || missing+=("$tool")
+  done
+  ((${#missing[@]} == 0)) || die "missing ${missing[*]}. Install QEMU, e.g.:
+  sudo apt install qemu-system-$( [[ $arch == amd64 ]] && echo x86 || echo arm ) qemu-utils"
+  [[ -e /dev/kvm ]] || die "no /dev/kvm: enable hardware virtualization (on WSL2: Windows 11 with nested virtualization)"
+  [[ -r /dev/kvm && -w /dev/kvm ]] || die "no access to /dev/kvm. Run: sudo usermod -aG kvm \$USER
+then log in again (on WSL2: 'wsl --shutdown' in Windows, then reopen). Until the next reboot,
+'sudo chmod 666 /dev/kvm' also works."
 }
 
 guest() { limactl shell --workdir / "$NAME" "$@"; }
@@ -154,12 +170,14 @@ cmd_start() {
     esac
   done
   require_lima
+  check_host
   mkdir -p "$STATE"
   if exists; then
     [[ -z $file && -z $release ]] || die "the VM already exists; run '$0 delete' first to change its image"
     if [[ $(limactl list --format '{{.Status}}' "$NAME") != Running ]]; then
       say "Starting the existing VM"
-      limactl start --tty=false "$NAME"
+      limactl start --tty=false "$NAME" ||
+        die "Lima could not start the VM; to start over with a fresh one: $0 delete && $0 start"
     fi
   else
     local image digest template=$HERE/ig-demo.yaml
@@ -168,7 +186,17 @@ cmd_start() {
     sed -e "s#@IMAGE@#$image#" -e "s#@ARCH@#$lima_arch#" -e "s#@SHA256@#$digest#" \
       "$template" > "$STATE/ig-demo.yaml"
     say "Creating the VM (Lima copies the image once)"
-    limactl start --tty=false --name "$NAME" "$STATE/ig-demo.yaml"
+    if ! limactl start --tty=false --name "$NAME" "$STATE/ig-demo.yaml"; then
+      # Keep no half-created VM: the next start would only try to boot it again.
+      local dir
+      dir=$(limactl list --format '{{.Dir}}' "$NAME" 2>/dev/null || true)
+      if [[ -f $dir/ha.stderr.log ]]; then
+        say "Last lines of Lima's log ($dir/ha.stderr.log):"
+        grep -v '"level":"debug"' "$dir/ha.stderr.log" | tail -n 10 >&2 || true
+      fi
+      limactl delete --force "$NAME" >/dev/null 2>&1 || true
+      die "Lima could not create the VM (see above). Fix the cause, then run '$0 start' again"
+    fi
   fi
   wait_ready
   write_kubeconfig

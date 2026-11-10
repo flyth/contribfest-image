@@ -35,6 +35,10 @@ portForwards:
   - guestPort: 8443
     hostIP: 127.0.0.1
     hostPort: 18443
-  # Forward nothing else.
-  - guestPortRange: [1, 65535]
+  # Forward nothing else: TCP and UDP, any guest address. Without guestIP 0.0.0.0
+  # and guestIPMustBeZero false, ports the guest binds on [::] (kubelet, mDNS) leak.
+  - guestIP: 0.0.0.0
+    guestIPMustBeZero: false
+    guestPortRange: [1, 65535]
+    proto: any
     ignore: true
