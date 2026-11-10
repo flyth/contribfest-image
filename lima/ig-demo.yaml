@@ -11,6 +11,13 @@ images:
     arch: "@ARCH@"
     digest: "sha256:@SHA256@"
 
+# Log in as the image's own user. Lima's default (your host user) collides with it
+# on Linux, where your uid is usually 1000 too, and the VM then never gets SSH.
+user:
+  name: ubuntu
+  uid: 1000
+  home: /home/ubuntu
+
 cpus: 2
 memory: 4GiB
 disk: 20GiB
