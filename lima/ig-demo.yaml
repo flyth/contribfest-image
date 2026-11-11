@@ -1,7 +1,7 @@
 # Lima template for the IG demo cluster. `ig-demo start` fills in the image and
 # runs `limactl start` with it; you can also read and use it by hand.
 #
-# The image is the launcher's `ig-minimal-<arch>.qcow2`: Ubuntu, a single-node
+# The image is `ig-minimal-<arch>.qcow2`: Ubuntu, a single-node
 # Kubernetes cluster, Inspektor Gadget and a local registry, all pre-installed,
 # so starting needs no downloads besides the image itself.
 minimumLimaVersion: 2.0.0
