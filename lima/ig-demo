@@ -1,0 +1,233 @@
+#!/usr/bin/env bash
+# Run the IG demo cluster with Lima on macOS or Linux, and set up kubectl and
+# kubectl-gadget on this computer to use it.
+#
+#   ig-demo start [--image FILE] [--release TAG]   create or start the VM
+#   ig-demo env                                    print shell exports (eval it)
+#   ig-demo status | stop | shell | delete
+#
+# Everything lands in ~/.ig-demo (override with IG_DEMO_HOME): the image
+# download, the kubeconfig, and kubectl/kubectl-gadget in bin/. Every download
+# is checked against its published SHA256. Nothing needs root.
+set -euo pipefail
+
+NAME="ig-demo"
+REPO=${IG_DEMO_REPO:-flyth/contribfest-image}
+STATE=${IG_DEMO_HOME:-$HOME/.ig-demo}
+API_PORT=18443
+HERE=$(cd "$(dirname "$0")" && pwd)
+
+die() { echo "ig-demo: $*" >&2; exit 1; }
+say() { echo "==> $*" >&2; }
+
+case $(uname -s) in
+  Darwin) os=darwin ;;
+  Linux) os=linux ;;
+  *) die "unsupported OS $(uname -s); use macOS or Linux" ;;
+esac
+case $(uname -m) in
+  arm64|aarch64) arch=arm64; lima_arch=aarch64 ;;
+  x86_64|amd64) arch=amd64; lima_arch=x86_64 ;;
+  *) die "unsupported CPU $(uname -m)" ;;
+esac
+
+sha256() {
+  if command -v sha256sum >/dev/null; then sha256sum "$1" | cut -d' ' -f1
+  else shasum -a 256 "$1" | cut -d' ' -f1; fi
+}
+
+# Download $1 to $2, resuming a partial download, then check it against $3.
+fetch() {
+  local url=$1 out=$2 expected=$3
+  if [[ -f $out && $(sha256 "$out") == "$expected" ]]; then return; fi
+  mkdir -p "$(dirname "$out")"
+  curl --fail --location --retry 5 --continue-at - --output "$out.part" "$url" ||
+    curl --fail --location --retry 5 --output "$out.part" "$url"
+  [[ $(sha256 "$out.part") == "$expected" ]] || { rm -f "$out.part"; die "checksum mismatch for $url"; }
+  mv "$out.part" "$out"
+}
+
+# Print the SHA256 listed for file $2 in checksum list $1.
+listed_sha() { awk -v f="$2" '$2 == f || $2 == "*" f {print $1}' "$1"; }
+
+require_lima() {
+  command -v limactl >/dev/null && return
+  if [[ $os == darwin ]]; then
+    die "Lima is not installed. Install it with: brew install lima"
+  fi
+  die "Lima is not installed. Without root, download it from
+https://github.com/lima-vm/lima/releases (lima-<version>-Linux-$lima_arch.tar.gz)
+and unpack it: tar -xzf lima-*.tar.gz -C ~/.local   (needs ~/.local/bin on PATH)"
+}
+
+# Before any download: what Lima on Linux needs from the host.
+check_host() {
+  [[ $os == linux ]] || return 0
+  local tool missing=()
+  for tool in qemu-img "qemu-system-$lima_arch"; do
+    command -v "$tool" >/dev/null || missing+=("$tool")
+  done
+  ((${#missing[@]} == 0)) || die "missing ${missing[*]}. Install QEMU, e.g.:
+  sudo apt install qemu-system-$( [[ $arch == amd64 ]] && echo x86 || echo arm ) qemu-utils"
+  [[ -e /dev/kvm ]] || die "no /dev/kvm: enable hardware virtualization (on WSL2: Windows 11 with nested virtualization)"
+  [[ -r /dev/kvm && -w /dev/kvm ]] || die "no access to /dev/kvm. Run: sudo usermod -aG kvm \$USER
+then log in again (on WSL2: 'wsl --shutdown' in Windows, then reopen). Until the next reboot,
+'sudo chmod 666 /dev/kvm' also works."
+}
+
+guest() { limactl shell --workdir / "$NAME" "$@"; }
+exists() { limactl list --quiet 2>/dev/null | grep -qx "$NAME"; }
+
+newest_release() {
+  curl --fail --silent --show-error --location "https://api.github.com/repos/$REPO/releases?per_page=100" |
+    grep -o '"tag_name": *"images-v[^"]*"' | head -1 | sed 's/.*"\(images-v[^"]*\)"/\1/'
+}
+
+# Set $image and $digest to a verified minimal image.
+get_image() {
+  local file=$1 release=$2 dir sums
+  if [[ -n $file ]]; then
+    [[ -f $file ]] || die "no such image: $file"
+    image=$(cd "$(dirname "$file")" && pwd)/$(basename "$file")
+    say "Checking $image"
+    digest=$(sha256 "$image")
+    sums=$(dirname "$image")/SHA256SUMS-$arch
+    if [[ -f $sums ]]; then
+      [[ $(listed_sha "$sums" "$(basename "$image")") == "$digest" ]] || die "$image does not match $sums"
+    fi
+    return
+  fi
+  [[ -n $release ]] || release=$(newest_release)
+  [[ -n $release ]] || die "no images-v* release found in $REPO"
+  dir=$STATE/images/$release
+  mkdir -p "$dir"
+  local base=https://github.com/$REPO/releases/download/$release name=ig-minimal-$arch.qcow2
+  curl --fail --silent --show-error --location --output "$dir/SHA256SUMS-$arch" "$base/SHA256SUMS-$arch"
+  digest=$(listed_sha "$dir/SHA256SUMS-$arch" "$name")
+  [[ -n $digest ]] || die "$name is not listed in $release"
+  say "Downloading $name from $release (resumes if interrupted)"
+  fetch "$base/$name" "$dir/$name" "$digest"
+  image=$dir/$name
+}
+
+wait_ready() {
+  local state deadline=$((SECONDS + 1200))
+  say "Waiting for Kubernetes and Inspektor Gadget (a few minutes on first start)"
+  while :; do
+    state=$(guest systemctl is-active demo.service 2>/dev/null || true)
+    [[ $state == active ]] && break
+    if [[ $state == failed ]]; then
+      guest sudo journalctl -u demo.service -n 40 --no-pager >&2 || true
+      die "the cluster failed to start; see above, or run: $0 shell"
+    fi
+    ((SECONDS < deadline)) || die "timed out waiting for the cluster"
+    sleep 5
+  done
+  guest sudo /opt/bin/kubectl --kubeconfig /etc/kubernetes/admin.conf \
+    -n gadget rollout status daemonset/gadget --timeout=600s >&2
+}
+
+install_tools() {
+  local versions ig k8s bin=$STATE/bin tmp
+  versions=$(guest cat /opt/demo/versions.env)
+  ig=$(sed -n 's/^IG_VERSION=//p' <<<"$versions")
+  k8s=$(sed -n 's/^KUBERNETES_VERSION=//p' <<<"$versions")
+  [[ -n $ig && -n $k8s ]] || die "cannot read component versions from the VM"
+  mkdir -p "$bin"
+  if [[ $(cat "$bin/.versions" 2>/dev/null) == "$ig $k8s $os-$arch" ]]; then return; fi
+  tmp=$(mktemp -d)
+
+  say "Installing kubectl $k8s"
+  local url=https://dl.k8s.io/release/$k8s/bin/$os/$arch/kubectl
+  fetch "$url" "$tmp/kubectl" "$(curl --fail --silent --show-error --location "$url.sha256")"
+  install -m 0755 "$tmp/kubectl" "$bin/kubectl"
+
+  say "Installing kubectl-gadget $ig"
+  local rel=https://github.com/inspektor-gadget/inspektor-gadget/releases/download/$ig
+  local tar=kubectl-gadget-$os-$arch-$ig.tar.gz
+  curl --fail --silent --show-error --location --output "$tmp/SHA256SUMS" "$rel/SHA256SUMS"
+  fetch "$rel/$tar" "$tmp/$tar" "$(listed_sha "$tmp/SHA256SUMS" "$tar")"
+  tar -xzf "$tmp/$tar" -C "$tmp" kubectl-gadget
+  install -m 0755 "$tmp/kubectl-gadget" "$bin/kubectl-gadget"
+  echo "$ig $k8s $os-$arch" > "$bin/.versions"
+  rm -rf "$tmp"
+}
+
+write_kubeconfig() {
+  local config=$STATE/kubeconfig
+  (umask 077 && guest sudo cat /etc/kubernetes/admin.conf |
+    sed "s#^\( *server:\).*#\1 https://127.0.0.1:$API_PORT#" > "$config.tmp")
+  mv "$config.tmp" "$config"
+}
+
+cmd_start() {
+  local file="" release=""
+  while (($#)); do
+    case $1 in
+      --image) file=${2:?--image needs a file}; shift 2 ;;
+      --release) release=${2:?--release needs a tag}; shift 2 ;;
+      *) die "unknown option $1" ;;
+    esac
+  done
+  require_lima
+  check_host
+  mkdir -p "$STATE"
+  if exists; then
+    [[ -z $file && -z $release ]] || die "the VM already exists; run '$0 delete' first to change its image"
+    if [[ $(limactl list --format '{{.Status}}' "$NAME") != Running ]]; then
+      say "Starting the existing VM"
+      limactl start --tty=false "$NAME" ||
+        die "Lima could not start the VM; to start over with a fresh one: $0 delete && $0 start"
+    fi
+  else
+    local image digest template=$HERE/ig-demo.yaml
+    [[ -f $template ]] || die "missing $template; keep ig-demo.yaml next to this script"
+    get_image "$file" "$release"
+    sed -e "s#@IMAGE@#$image#" -e "s#@ARCH@#$lima_arch#" -e "s#@SHA256@#$digest#" \
+      "$template" > "$STATE/ig-demo.yaml"
+    say "Creating the VM (Lima copies the image once)"
+    if ! limactl start --tty=false --name "$NAME" "$STATE/ig-demo.yaml"; then
+      # Keep no half-created VM: the next start would only try to boot it again.
+      local dir
+      dir=$(limactl list --format '{{.Dir}}' "$NAME" 2>/dev/null || true)
+      if [[ -f $dir/ha.stderr.log ]]; then
+        say "Last lines of Lima's log ($dir/ha.stderr.log):"
+        grep -v '"level":"debug"' "$dir/ha.stderr.log" | tail -n 10 >&2 || true
+      fi
+      limactl delete --force "$NAME" >/dev/null 2>&1 || true
+      die "Lima could not create the VM (see above). Fix the cause, then run '$0 start' again"
+    fi
+  fi
+  wait_ready
+  write_kubeconfig
+  install_tools
+  cat <<EOF
+
+The cluster is ready. To use it from this shell:
+
+  eval "\$($0 env)"
+  kubectl gadget run trace_open:$(cut -d' ' -f1 "$STATE/bin/.versions") --timeout 5
+
+Run the gadget your gadget-template repository publishes:
+
+  kubectl gadget run ghcr.io/<owner>/<repository>:latest
+
+Stop the VM with '$0 stop'; your cluster is kept until '$0 delete'.
+EOF
+}
+
+cmd_env() {
+  [[ -f $STATE/kubeconfig ]] || die "run '$0 start' first"
+  echo "export KUBECONFIG='$STATE/kubeconfig'"
+  echo "export PATH='$STATE/bin':\"\$PATH\""
+}
+
+case ${1:-} in
+  start) shift; cmd_start "$@" ;;
+  env) cmd_env ;;
+  status) require_lima; limactl list "$NAME" ;;
+  stop) require_lima; limactl stop "$NAME" ;;
+  shell) require_lima; limactl shell "$NAME" ;;
+  delete) require_lima; limactl delete --force "$NAME" ;;
+  *) sed -n '2,11p' "$0" | sed 's/^# \{0,1\}//'; exit 64 ;;
+esac
